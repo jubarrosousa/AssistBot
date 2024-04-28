@@ -1,4 +1,5 @@
 import telebot
+from youtubesearchpython import VideosSearch
 
 TOKEN_API = "6636899150:AAH__sSBo1QSwsJe3-3EHEt9X3inlfE_tuA"
 
@@ -6,7 +7,15 @@ assistbot = telebot.TeleBot(TOKEN_API)
 
 @assistbot.message_handler(commands=['youtube', 'yt'])
 def send_video(mensagem):
-	assistbot.reply_to(mensagem, "https://www.youtube.com/watch?v=dQw4w9WgXcQ&pp=ygUXbmV2ZXIgZ29ubmEgZ2l2ZSB5b3UgdXA%3D")
+    texto = mensagem.text
+    conteudo = texto.split()
+    if len(conteudo) == 1:
+        assistbot.reply_to(mensagem, "Uso: /youtube ou /yt <o que deseja pesquisar>")
+    else:
+        query = ' '.join(conteudo[1:])
+        videosSearch = VideosSearch(query, limit = 1)
+        assistbot.reply_to(mensagem, (videosSearch.result())['result'][0]['link'])
+
 
 # Se retornar True, vai acionar o bot via @assistbot.message_handler().
 # É com essa função que vamos decidir quais tipos de mensagem serão respondidas pelo bot.

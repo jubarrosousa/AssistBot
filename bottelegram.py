@@ -1,7 +1,39 @@
 import telebot
 from youtubesearchpython import VideosSearch
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from googleapiclient.errors import HttpError
+import os.path
+import pickle
+import datetime
 
+SCOPES = ['https://www.googleapis.com/auth/calendar']
 TOKEN_API = "6636899150:AAH__sSBo1QSwsJe3-3EHEt9X3inlfE_tuA"
+
+# Dicionário de substituição para traduzir os nomes dos dias da semana e dos meses para o português
+traducoes = {
+    "Monday": "Segunda-feira",
+    "Tuesday": "Terça-feira",
+    "Wednesday": "Quarta-feira",
+    "Thursday": "Quinta-feira",
+    "Friday": "Sexta-feira",
+    "Saturday": "Sábado",
+    "Sunday": "Domingo",
+    "January": "Janeiro",
+    "February": "Fevereiro",
+    "March": "Março",
+    "April": "Abril",
+    "May": "Maio",
+    "June": "Junho",
+    "July": "Julho",
+    "August": "Agosto",
+    "September": "Setembro",
+    "October": "Outubro",
+    "November": "Novembro",
+    "December": "Dezembro"
+}
+
 
 assistbot = telebot.TeleBot(TOKEN_API)
 
@@ -16,6 +48,97 @@ def send_video(mensagem):
         videosSearch = VideosSearch(query, limit = 1)
         assistbot.reply_to(mensagem, (videosSearch.result())['result'][0]['link'])
 
+@assistbot.message_handler(commands=['calendario'])
+def verificar_eventos(mensagem):
+    
+    texto = mensagem.text
+    conteudo = texto.split()
+    # print(os.listdir())
+
+    if (len(conteudo) == 1):
+        assistbot.reply_to(mensagem, "Recuperando informacoes dos calendarios existentes")
+
+        # Recuperando informacao dos calendarios existentes
+        creds = None
+        if os.path.exists('token.pickle'):
+            with open('token.pickle', 'rb') as token:
+                creds = pickle.load(token)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    'credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+
+            with open('token.pickle', 'wb') as token:
+                pickle.dump(creds, token)
+
+        servico = build('calendar', 'v3', credentials=creds)
+
+        # Feature 1: Listar todos os calendarios
+        print("Recuperando informacao dos calendarios:")
+        lista_calendario = servico.calendarList().list().execute().get('items', [])
+        for calendario in lista_calendario:
+            assistbot.reply_to(mensagem, (calendario['summary']))
+
+    elif(conteudo[1] == 'eventos'):
+
+        # Conectando com a API
+        creds = None
+        if os.path.exists('token.pickle'):
+            with open('token.pickle', 'rb') as token:
+                creds = pickle.load(token)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    'credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+
+            with open('token.pickle', 'wb') as token:
+                pickle.dump(creds, token)
+
+        try:
+            servico = build('calendar', 'v3', credentials=creds)
+
+            # Call the Calendar API
+            now = datetime.datetime.utcnow().isoformat() + "Z"  # 'Z' indicates UTC time
+            print("Getting the upcoming 10 events")
+            events_result = (
+                servico.events()
+                .list(
+                    calendarId="primary",
+                    timeMin=now,
+                    maxResults=10,
+                    singleEvents=True,
+                    orderBy="startTime",
+                )
+                .execute()
+            )
+
+            eventos = events_result.get("items", [])
+
+            if not eventos:
+                assistbot.reply_to(mensagem, "Nenhum evento futuro")
+                return
+            # Prints the start and name of the next 10 events
+            for event in eventos:
+                start = event["start"].get("dateTime", event["start"].get("date"))  
+                link = event["htmlLink"]
+
+                inicio = datetime.datetime.strptime(start, "%Y-%m-%dT%H:%M:%S%z").strftime("%A, %B %d, %Y %I:%M %p")
+
+                for nome_en, nome_pt in traducoes.items():
+                    inicio = inicio.replace(nome_en, nome_pt)
+
+                assistbot.reply_to(mensagem,(f"Inicio : {inicio} \nResumo: {event["summary"]} \nLink do evento no calendario: {link}"))
+
+        except HttpError as error:
+            assistbot.reply_to(mensagem, f"Ocorreu um erro: {error}")
 
 # Se retornar True, vai acionar o bot via @assistbot.message_handler().
 # É com essa função que vamos decidir quais tipos de mensagem serão respondidas pelo bot.

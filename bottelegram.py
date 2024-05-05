@@ -139,6 +139,59 @@ def verificar_eventos(mensagem):
 
         except HttpError as error:
             assistbot.reply_to(mensagem, f"Ocorreu um erro: {error}")
+        
+    elif (conteudo[1] == 'adicionar'):
+        # Conectando com a API
+        creds = None
+        if os.path.exists('token.pickle'):
+            with open('token.pickle', 'rb') as token:
+                creds = pickle.load(token)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    'credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+
+            with open('token.pickle', 'wb') as token:
+                pickle.dump(creds, token)
+
+        try:
+            servico = build('calendar', 'v3', credentials=creds)
+
+            print(conteudo)
+
+            data_inicio = str(conteudo[3]) + " " + str(conteudo[4])
+            data_fim = str(conteudo[5]) + " " + str(conteudo[6])
+
+            timestamp_inicio = datetime.datetime.strptime(data_inicio, "%Y-%m-%d %H:%M:%S")
+            timestamp_fim = datetime.datetime.strptime(data_fim, "%Y-%m-%d %H:%M:%S")
+
+            data_inicio = timestamp_inicio.strftime("%Y-%m-%dT%H:%M:%S-03:00")
+            data_fim = timestamp_fim.strftime("%Y-%m-%dT%H:%M:%S-03:00")
+
+            event = {
+                'summary': conteudo[2],
+                'start': {
+                    'dateTime': data_inicio,
+                    'timeZone': 'America/Sao_Paulo',
+                },
+                'end': {
+                    'dateTime': data_fim,
+                    'timeZone': 'America/Sao_Paulo',
+                }
+                # 'recurrence': [
+                #     'RRULE:FREQ=DAILY;COUNT=2'
+                # ]                 
+            }
+
+            event = servico.events().insert(calendarId='primary', body=event).execute()
+            assistbot.reply_to(mensagem, 'Evento criado: %s' % (event.get('htmlLink')))
+
+        except HttpError as error:
+            assistbot.reply_to(mensagem, f"Ocorreu um erro: {error}")
 
 # Se retornar True, vai acionar o bot via @assistbot.message_handler().
 # É com essa função que vamos decidir quais tipos de mensagem serão respondidas pelo bot.

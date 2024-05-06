@@ -181,7 +181,11 @@ def verificar_eventos(mensagem):
                 'end': {
                     'dateTime': data_fim,
                     'timeZone': 'America/Sao_Paulo',
-                }
+                },
+                'attendees': [
+                    {'email': '6anohistoria@gmail.com'},
+                    {'email': 'filipebf852@poli.ufrj.br'},
+  ]
                 # 'recurrence': [
                 #     'RRULE:FREQ=DAILY;COUNT=2'
                 # ]                 

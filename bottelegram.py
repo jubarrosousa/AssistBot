@@ -154,11 +154,10 @@ def verificar_eventos(mensagem):
         print(len(conteudo))
 
         if len(conteudo) < 7:
-            assistbot.reply_to(mensagem, "Uso: \\calendario adicionar <nome do evento>  <data de início> <hora de início>  <data fim> <horário fim> <emails para convidar separados por espaço>")
+            assistbot.reply_to(mensagem, "Uso: \\calendario adicionar <nome do evento> <data de início> <hora de início>  <data fim> <horário fim> <(opcional) emails para convidar separados por espaço>")
         
         else:
-            print("entrou")
-
+            
             if os.path.exists('token.pickle'):
                 with open('token.pickle', 'rb') as token:
                     creds = pickle.load(token)

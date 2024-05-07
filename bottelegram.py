@@ -135,7 +135,7 @@ def verificar_eventos(mensagem):
                 for nome_en, nome_pt in traducoes.items():
                     inicio = inicio.replace(nome_en, nome_pt)
 
-                assistbot.reply_to(mensagem,(f"Inicio : {inicio} \nResumo: {event["summary"]} \nLink do evento no calendario: {link}"))
+                assistbot.reply_to(mensagem,(f"Inicio : {inicio} \nResumo: {event['summary']} \nLink do evento no calendario: {link}"))
 
         except HttpError as error:
             assistbot.reply_to(mensagem, f"Ocorreu um erro: {error}")

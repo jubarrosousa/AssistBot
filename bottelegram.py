@@ -161,6 +161,8 @@ def verificar_eventos(mensagem):
         try:
             servico = build('calendar', 'v3', credentials=creds)
 
+            participantes = [{'email':'6ano2historia@gmail.com'}]
+
             print(conteudo)
 
             data_inicio = str(conteudo[3]) + " " + str(conteudo[4])
@@ -172,6 +174,10 @@ def verificar_eventos(mensagem):
             data_inicio = timestamp_inicio.strftime("%Y-%m-%dT%H:%M:%S-03:00")
             data_fim = timestamp_fim.strftime("%Y-%m-%dT%H:%M:%S-03:00")
 
+            if (len(conteudo) > 7):
+                for i in range (7, len(conteudo)):
+                    participantes.append({'email':conteudo[i]})
+
             event = {
                 'summary': conteudo[2],
                 'start': {
@@ -182,10 +188,7 @@ def verificar_eventos(mensagem):
                     'dateTime': data_fim,
                     'timeZone': 'America/Sao_Paulo',
                 },
-                'attendees': [
-                    {'email': '6anohistoria@gmail.com'},
-                    {'email': 'filipebf852@poli.ufrj.br'},
-  ]
+                'attendees': participantes
                 # 'recurrence': [
                 #     'RRULE:FREQ=DAILY;COUNT=2'
                 # ]                 

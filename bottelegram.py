@@ -1,15 +1,10 @@
-import telebot
-from youtubesearchpython import VideosSearch
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.errors import HttpError
-import os.path
-import pickle
-import datetime
+from all_imports import *
+
+load_dotenv()
+
 
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-TOKEN_API = "6636899150:AAH__sSBo1QSwsJe3-3EHEt9X3inlfE_tuA"
+TOKEN_API = os.getenv('BOT_TOKEN')
 
 # Dicionário de substituição para traduzir os nomes dos dias da semana e dos meses para o português
 traducoes = {
@@ -37,10 +32,22 @@ traducoes = {
 
 assistbot = telebot.TeleBot(TOKEN_API)
 
+@assistbot.message_handler(commands=['help', 'ajuda'])
+def instrucoes(mensagem):
+   
+    assistbot.reply_to(mensagem, "\n Olá, eu sou o robô assistente AssitBot. \n \n Atualmente, eu tenho os seguintes comandos:\n\n" \
+                       "/help ou /ajuda: ver os comandos disponíveis \n"\
+                       "/youtube ou /yt <o que deseja pesquisar>: pesquisar algum vídeo no youtube \n"\
+                       "/calendario: ver calendários existentes no Google Agenda \n"\
+                       "/calendario eventos: ver eventos existentes no Google Agenda \n"\
+                       "/calendario adicionar <nome do evento>  <data de início> <hora de início> <data fim> <horário fim> <emails para convidar separados por espaço>")
+
+
 @assistbot.message_handler(commands=['youtube', 'yt'])
 def send_video(mensagem):
     texto = mensagem.text
     conteudo = texto.split()
+
     if len(conteudo) == 1:
         assistbot.reply_to(mensagem, "Uso: /youtube ou /yt <o que deseja pesquisar>")
     else:
@@ -143,71 +150,82 @@ def verificar_eventos(mensagem):
     elif (conteudo[1] == 'adicionar'):
         # Conectando com a API
         creds = None
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
 
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
-                creds = flow.run_local_server(port=0)
+        print(len(conteudo))
 
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(creds, token)
+        if len(conteudo) < 7:
+            assistbot.reply_to(mensagem, "Uso: \\calendario adicionar <nome do evento>  <data de início> <hora de início>  <data fim> <horário fim> <emails para convidar separados por espaço>")
+        
+        else:
+            print("entrou")
 
-        try:
-            servico = build('calendar', 'v3', credentials=creds)
+            if os.path.exists('token.pickle'):
+                with open('token.pickle', 'rb') as token:
+                    creds = pickle.load(token)
 
-            participantes = [{'email':'6ano2historia@gmail.com'}]
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                else:
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        'credentials.json', SCOPES)
+                    creds = flow.run_local_server(port=0)
 
-            print(conteudo)
+                with open('token.pickle', 'wb') as token:
+                    pickle.dump(creds, token)
 
-            data_inicio = str(conteudo[3]) + " " + str(conteudo[4])
-            data_fim = str(conteudo[5]) + " " + str(conteudo[6])
+            try:
+                servico = build('calendar', 'v3', credentials=creds)
 
-            timestamp_inicio = datetime.datetime.strptime(data_inicio, "%Y-%m-%d %H:%M:%S")
-            timestamp_fim = datetime.datetime.strptime(data_fim, "%Y-%m-%d %H:%M:%S")
+                participantes = [{'email':'6ano2historia@gmail.com'}]
 
-            data_inicio = timestamp_inicio.strftime("%Y-%m-%dT%H:%M:%S-03:00")
-            data_fim = timestamp_fim.strftime("%Y-%m-%dT%H:%M:%S-03:00")
+                print(conteudo)
 
-            if (len(conteudo) > 7):
-                for i in range (7, len(conteudo)):
-                    participantes.append({'email':conteudo[i]})
+                data_inicio = str(conteudo[3]) + " " + str(conteudo[4])
+                data_fim = str(conteudo[5]) + " " + str(conteudo[6])
 
-            event = {
-                'summary': conteudo[2],
-                'start': {
-                    'dateTime': data_inicio,
-                    'timeZone': 'America/Sao_Paulo',
-                },
-                'end': {
-                    'dateTime': data_fim,
-                    'timeZone': 'America/Sao_Paulo',
-                },
-                'attendees': participantes
-                # 'recurrence': [
-                #     'RRULE:FREQ=DAILY;COUNT=2'
-                # ]                 
-            }
+                timestamp_inicio = datetime.datetime.strptime(data_inicio, "%Y-%m-%d %H:%M:%S")
+                timestamp_fim = datetime.datetime.strptime(data_fim, "%Y-%m-%d %H:%M:%S")
 
-            event = servico.events().insert(calendarId='primary', body=event).execute()
-            assistbot.reply_to(mensagem, 'Evento criado: %s' % (event.get('htmlLink')))
+                data_inicio = timestamp_inicio.strftime("%Y-%m-%dT%H:%M:%S-03:00")
+                data_fim = timestamp_fim.strftime("%Y-%m-%dT%H:%M:%S-03:00")
 
-        except HttpError as error:
-            assistbot.reply_to(mensagem, f"Ocorreu um erro: {error}")
+                if (len(conteudo) > 7):
+                    for i in range (7, len(conteudo)):
+                        participantes.append({'email':conteudo[i]})
+
+                event = {
+                    'summary': conteudo[2],
+                    'start': {
+                        'dateTime': data_inicio,
+                        'timeZone': 'America/Sao_Paulo',
+                    },
+                    'end': {
+                        'dateTime': data_fim,
+                        'timeZone': 'America/Sao_Paulo',
+                    },
+                    'attendees': participantes
+                    # 'recurrence': [
+                    #     'RRULE:FREQ=DAILY;COUNT=2'
+                    # ]                 
+                }
+
+
+                event = servico.events().insert(calendarId='primary', body=event).execute()
+                assistbot.reply_to(mensagem, 'Evento criado: %s' % (event.get('htmlLink')))
+
+
+            except HttpError as error:
+                assistbot.reply_to(mensagem, f"Ocorreu um erro: {error}")
 
 # Se retornar True, vai acionar o bot via @assistbot.message_handler().
 # É com essa função que vamos decidir quais tipos de mensagem serão respondidas pelo bot.
-def verificar(mensagem):
-    return True
+#def verificar(mensagem):
+#    return True
 
-@assistbot.message_handler(func=verificar)
-def responder(mensagem):
-    assistbot.reply_to(mensagem, "Agora eu consigo responder a qualquer mensagem que vc mandar com esse mesmo texto. Mas para isso, é necessário deixar o código rodando em algum pc.")
+#@assistbot.message_handler(func=verificar)
+#def responder(mensagem):
+#    assistbot.reply_to(mensagem, "Agora eu consigo responder a qualquer mensagem que vc mandar com esse mesmo texto. Mas para isso, é necessário deixar o código rodando em algum pc.")
 
 # Se alguém mandar alguma mensagem enquanto o código não estiver rodando, essa pessoa só será respondida se o
 # código voltar a rodar em algum pc.

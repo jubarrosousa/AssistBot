@@ -307,6 +307,77 @@ def adicionar_eventos(mensagem):
             assistbot.reply_to(mensagem, f"Ocorreu um erro: {error}")
 
 
+@assistbot.message_handler(commands=['deletar'])
+def verificar_eventos(mensagem):
+
+    encontrou = False
+    texto = mensagem.text
+    conteudo = texto.split()
+
+    if len(conteudo) == 1:
+        assistbot.reply_to(mensagem, "Uso: /deletar <nome do evento>")
+    else:
+        nome_evento = ' '.join(conteudo[1:])
+    
+    creds = None
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    try:
+        servico = build('calendar', 'v3', credentials=creds)
+
+        # Call the Calendar API
+        now = datetime.datetime.utcnow().isoformat() + "Z"  # 'Z' indicates UTC time
+        print("Getting the upcoming 10 events")
+        events_result = (
+            servico.events()
+            .list(
+                calendarId="primary",
+                timeMin=now,
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute()
+        )
+
+        eventos = events_result.get("items", [])
+
+        if not eventos:
+            assistbot.reply_to(mensagem, "Nenhum evento futuro")
+            return
+        # Verifica se existe um eventocom o nome desejado e pega seu id
+        for evento in eventos:
+
+            if(evento['summary'] == nome_evento):
+                id_evento = evento['id']
+                encontrou = True
+
+        if (encontrou == True):
+            # Tenta deletar o evento
+            try:
+                servico.events().delete(calendarId="primary", eventId=id_evento).execute() 
+                assistbot.reply_to(mensagem, f"O evento {nome_evento} foi deletado")
+            except Exception as e:
+                assistbot.reply_to(mensagem,f"Um erro ocorreu: {e}")
+
+        else:
+            assistbot.reply_to(mensagem,(f"Nenhum evento com esse nome foi encontrado"))
+
+    except HttpError as error:
+        assistbot.reply_to(mensagem, f"Ocorreu um erro: {error}")
+
 # Se retornar True, vai acionar o bot via @assistbot.message_handler().
 # É com essa função que vamos decidir quais tipos de mensagem serão respondidas pelo bot.
 #def verificar(mensagem):

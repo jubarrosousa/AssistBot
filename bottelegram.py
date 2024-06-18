@@ -10,11 +10,31 @@ import datetime
 import schedule 
 import threading
 import time
+import json
+import requests
+import requests
+import urllib.parse
+import base64
+from flask import Flask, redirect, request, jsonify, session
+import urllib.parse
+import re
 
 
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 TOKEN_API = "6636899150:AAH__sSBo1QSwsJe3-3EHEt9X3inlfE_tuA"
 CHAT_ID = "-1002056949053"
+
+CLIENT_ID = '0876a55370cf4010a08f6404211039ac'
+CLIENT_SECRET = 'c43a2f64fb3e4377bca3a5dc54e0fb8c'
+REDIRECT_URI = 'http://localhost:5000/callback'
+#REDIRECT_URI = 'https://ea5c-2804-14d-5c51-8d74-f4e3-c77-f53d-23f0.ngrok-free.app/callback' 
+scope = 'playlist-modify-public playlist-modify-private user-read-private user-read-email playlist-read-private playlist-read-collaborative'
+
+
+AUTH_URL = 'https://accounts.spotify.com/authorize'
+TOKEN_URL = 'https://accounts.spotify.com/api/token'
+API_BASE_URL = 'https://api.spotify.com/v1/' 
+
 
 # Dicionário de substituição para traduzir os nomes dos dias da semana e dos meses para o português
 traducoes = {
@@ -39,8 +59,239 @@ traducoes = {
     "December": "Dezembro"
 }
 
+# Function to create a new playlist in Spotify
+def create_playlist(access_token):
+    playlist_name = 'My New Playlist'
+    playlist_description = 'Playlist created via Spotify API'
+    playlist_url = f'https://api.spotify.com/v1/users/{get_user_id(access_token)}/playlists'
+    headers = {
+        'Authorization': 'Bearer {}'.format(access_token),
+        'Content-Type': 'application/json'
+    }
+    data = {
+        'name': playlist_name,
+        'description': playlist_description,
+        'public': True  # Change to False if you want a private playlist
+    }
+
+    create_playlist_response = requests.post(playlist_url, headers=headers, json=data)
+
+    if create_playlist_response.status_code == 201:
+        playlist_id = create_playlist_response.json()['id']
+        return f'Playlist created successfully! Playlist ID: {playlist_id}'
+    else:
+        return f'Failed to create playlist. Status code: {create_playlist_response.status_code}'
+
+# Helper function to get user ID
+def get_user_id(access_token):
+    user_profile_url = 'https://api.spotify.com/v1/me'
+    headers = {'Authorization': 'Bearer {}'.format(access_token)}
+    profile_response = requests.get(user_profile_url, headers=headers)
+
+    if profile_response.status_code == 200:
+        return profile_response.json()['id']
+    else:
+        return None
+
+# Function to save access token using pickle
+def save_access_token(access_token):
+    with open('spotify_access_token.pkl', 'wb') as token_file:
+        pickle.dump(access_token, token_file)
+    return True
+
+# Function to load access token using pickle
+def load_access_token():
+    token_file_path = Path('spotify_access_token.pkl')
+    if token_file_path.is_file():
+        with open('spotify_access_token.pkl', 'rb') as token_file:
+            access_token = pickle.load(token_file)
+        return access_token
+    else:
+        return None
 
 assistbot = telebot.TeleBot(TOKEN_API)
+
+user_sessions = {}
+
+# Function to handle token reception (called by Flask server)
+def handle_token_reception(chat_id, access_token, refresh_token, expires_at):
+    user_sessions[chat_id] = {
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'expires_at': expires_at
+    }
+
+@assistbot.message_handler(commands=['login_spotify'])
+def login(message):
+
+    params = {
+        'client_id': CLIENT_ID,
+        'response_type': 'code',
+        'scope': scope,
+        'redirect_uri': REDIRECT_URI,
+        'show_dialog': True
+    }
+
+    auth_url = f"{AUTH_URL}?{urllib.parse.urlencode(params)}"
+    assistbot.reply_to(message, f"Click the link to login to Spotify: {auth_url}")
+
+@assistbot.message_handler(commands=['playlists'])
+def get_playlists(message):
+
+    creds = None
+    if os.path.exists('creds.pickle'):
+        with open('creds.pickle', 'rb') as token:
+            creds = pickle.load(token)
+            print(creds)
+
+    if not creds or datetime.datetime.now().timestamp() > creds['expires_at']:
+        assistbot.reply_to(message, "Session expired or not authenticated. Please use /login to authenticate again.")
+        return
+
+    #session = user_sessions.get(message.chat.id)
+    # if not session or datetime.datetime.now().timestamp() > datetime.datetime.now().timestamp() + session['expires_in']:
+    #     assistbot.reply_to(message, "Session expired or not authenticated. Please use /login to authenticate again.")
+    #     return
+
+    header = {
+        'Authorization': f"Bearer {creds['access_token']}"
+    }
+
+    response = requests.get(API_BASE_URL + 'me/playlists', headers=header)
+
+    playlists = response.json()
+    print(playlists)
+
+    if 'items' in playlists:
+        playlist_names = [playlist['name'] for playlist in playlists['items']]
+        print(playlist_names)
+        assistbot.reply_to(message, "\n".join(playlist_names))
+    else:
+        assistbot.reply_to(message, "Failed to retrieve playlists.")
+
+@assistbot.message_handler(commands=['criar_playlist'])
+def create_playlist(message):
+    creds = None
+    if os.path.exists('creds.pickle'):
+        with open('creds.pickle', 'rb') as token:
+            creds = pickle.load(token)
+
+    if not creds or datetime.datetime.now().timestamp() > creds['expires_at']:
+        assistbot.reply_to(message, "Session expired or not authenticated. Please use /login to authenticate again.")
+        return
+
+    headers = {
+        'Authorization': f"Bearer {creds['access_token']}",
+        'Content-Type': 'application/json'
+    }
+    user_response = requests.get('https://api.spotify.com/v1/me', headers=headers)
+    user_info = user_response.json()
+
+    if 'id' in user_info:
+        user_id = user_info['id']
+        playlist_name = message.text[len('/criar_playlist '):].strip()
+        print(playlist_name)
+
+        if not playlist_name:
+            assistbot.reply_to(message, "Please provide a playlist name. Usage: /criar_playlist <nome playlist>")
+            return
+        
+        playlist_data = {
+            "name": playlist_name,
+            #"description": "New playlist created from Telegram bot",
+            "public": False
+        }
+        response = requests.post(f'https://api.spotify.com/v1/users/{user_id}/playlists', headers=headers, json=playlist_data)
+        playlist_info = response.json()
+        print(playlist_info)
+        
+        if 'id' in playlist_info:
+            assistbot.reply_to(message, f"Playlist '{playlist_name}' created successfully!")
+        else:
+            assistbot.reply_to(message, "Failed to create playlist.")
+    else:
+        assistbot.reply_to(message, "Failed to retrieve user information.")
+
+@assistbot.message_handler(commands=['adicionar_musica'])
+def aadicionar_musica(message):
+    creds = None
+    if os.path.exists('creds.pickle'):
+        with open('creds.pickle', 'rb') as token:
+            creds = pickle.load(token)
+
+    if not creds or datetime.datetime.now().timestamp() > creds['expires_at']:
+        assistbot.reply_to(message, "Session expired or not authenticated. Please use /login to authenticate again.")
+        return
+
+    headers = {
+        'Authorization': f"Bearer {creds['access_token']}",
+        'Content-Type': 'application/json'
+    }
+
+    try:
+        command_text = message.text[len('/adicionar_musica '):].strip()
+        matches = re.findall(r'"([^"]*)"', command_text)
+        #playlist_name, song_name = command_text.split(' ', 1)
+    except:
+        assistbot.reply_to(message, "Insira um comando válido. Uso: /adicionar_musica \"nome playlist\" \"nome musica\"")
+        return
+    
+    playlist_name, song_name = matches
+
+    headers = {
+        'Authorization': f"Bearer {creds['access_token']}",
+        'Content-Type': 'application/json'
+    }
+
+    if not playlist_name:
+        assistbot.reply_to(message, "Please provide a playlist name. Usage: /get_playlist_id [playlist_name]")
+        return
+
+    user_response = requests.get('https://api.spotify.com/v1/me', headers=headers)
+    user_info = user_response.json()
+
+    if 'id' in user_info:
+        user_id = user_info['id']
+        playlists_response = requests.get(f'https://api.spotify.com/v1/users/{user_id}/playlists', headers=headers)
+        playlists_info = playlists_response.json()
+
+        if 'items' in playlists_info:
+
+            encontrou = False
+            for playlist in playlists_info['items']:
+                if playlist['name'].lower() == playlist_name.lower():
+                    playlist_id = playlist['id']
+                    encontrou = True
+                    break
+                    #assistbot.reply_to(message, f"Playlist '{playlist_name}' ID: {playlist['id']}")
+
+            if encontrou == False:
+                assistbot.reply_to(message, f"No playlist found with the name '{playlist_name}'.")
+        else:
+            assistbot.reply_to(message, f"Failed to retrieve playlists. Error: {playlists_info}")
+    else:
+        assistbot.reply_to(message, f"Failed to retrieve user information. Error: {user_info}")
+
+    search_params = {
+        'q': song_name,
+        'type': 'track',
+        'limit': 1
+    }
+    search_response = requests.get('https://api.spotify.com/v1/search', headers=headers, params=search_params)
+    search_results = search_response.json()
+
+    if search_results['tracks']['items']:
+        track_uri = search_results['tracks']['items'][0]['uri']
+        add_track_url = f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks'
+        add_track_response = requests.post(add_track_url, headers=headers, json={'uris': [track_uri]})
+        print(add_track_response)
+        
+        if add_track_response.status_code == 200:
+            assistbot.reply_to(message, f"Song '{song_name}' added successfully to the playlist!")
+        else:
+            assistbot.reply_to(message, f"Failed to add the song to the playlist. Error: {add_track_response.json()['error']['message']}")
+    else:
+        assistbot.reply_to(message, "No results found for the song.")
 
 @assistbot.message_handler(commands=['help', 'ajuda'])
 def instrucoes(mensagem):
@@ -114,7 +365,7 @@ def send_message_event(mensagem = False):
             # Se faltar menos de 7 dias começar a enviar alertas
             if (diferenca_de_tempo.days < 7):
                 assistbot.send_message(CHAT_ID, f"O evento {event['summary']} se aproxima!\n Ele ocorre em {diferenca_de_tempo.days} dias e {diferenca_de_tempo.seconds // 3600} horas")
-                assistbot.send_message(CHAT_ID, f"Link do evento na agenda: {event["htmlLink"]}")
+                assistbot.send_message(CHAT_ID, f"Link do evento na agenda: {event['htmlLink']}")
 
     except HttpError as error:
         assistbot.send_message(CHAT_ID, f"Ocorreu um erro: {error}")  
@@ -308,7 +559,7 @@ def adicionar_eventos(mensagem):
 
 
 @assistbot.message_handler(commands=['deletar'])
-def verificar_eventos(mensagem):
+def deletar_eventos(mensagem):
 
     encontrou = False
     texto = mensagem.text

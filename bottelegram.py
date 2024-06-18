@@ -296,7 +296,8 @@ def instrucoes(mensagem):
                        "/login_spotify: permite os comandos associados à conta spotify do bot \n"\
                        "/playlists: lista as playlists do bot no spotify \n"\
                        "/criar_playlist <nome da playlist que será criada na conta do bot> \n"\
-                       "/adicionar_musica \"nome da playlist\" \"nome da música\"")
+                       "/adicionar_musica \"nome da playlist\" \"nome da música \n"\
+                       "/musica_playlist <nome da playlist>: lista as musicas de uma playlist")
 
 @assistbot.message_handler(commands=['chat_id'])
 def send_chat_id(mensagem):

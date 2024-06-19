@@ -3,8 +3,12 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
 from google.oauth2.credentials import Credentials
-
+from datetime import datetime, timedelta
 import os.path
+import schedule
+import threading
+import pickle
+import time
 
 # ID e range da planilha google (que pode ser alimentada por um formulário google).
 SPREADSHEET_ID = "1iKTMh7IqPUWvc_ocABJbqQ0artwA3kcR_0KdkE95As0"
@@ -15,6 +19,9 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 # Identifica o arquivo txt presente neste diretório - usado para controlar as atualizações do formulário.
 ARQ = "qtd_respostas_processadas.txt"
+
+# Traduz a informação das colunas da planilha de respostas no índice correspondente à coluna
+NOME1,CPF1,RG1,CEL1,END1,EMAIL1,NOME2,CPF2,RG2,CEL2,END2,EMAIL2,CERIM,DATA,HORA,END_CERIM = 1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17
 
 
 def autenticar_e_guardar_planilha():
@@ -62,20 +69,51 @@ def autenticar_e_guardar_planilha():
     print(f'Erro ao acessar a planilha: {err}')
 
 
-def criar_eventos(contrato):
-   pass
-# event = {
-#                 'summary': conteudo[1],
-#                 'start': {
-#                     'dateTime': data_inicio,
-#                     'timeZone': 'America/Sao_Paulo',
-#                 },
-#                 'end': {
-#                     'dateTime': data_fim,
-#                     'timeZone': 'America/Sao_Paulo',
-#                 },
-#                 'attendees': participantes        
-#             }
+def criar_eventos(dados_contrato):
+
+    auxiliar = f"{dados_contrato[DATA]} {dados_contrato[HORA]}"
+    start_time = datetime.strptime(auxiliar, '%d/%m/%Y %H:%M:%S')
+    # Calcula o tempo de término adicionando 2 horas ao tempo de início
+    end_time = start_time + timedelta(hours=2)
+    end_time = end_time
+
+    descricao = dados_contrato[CERIM]+" de "+dados_contrato[NOME1]+" com "+dados_contrato[NOME2]
+
+    event = {
+                    'summary': dados_contrato[CERIM]+dados_contrato[DATA]+dados_contrato[HORA],
+                    'description': descricao,
+                    'start': {
+                        'dateTime': start_time.isoformat(),
+                        'timeZone': 'America/Sao_Paulo',
+                    },
+                    'end': {
+                        'dateTime': end_time.isoformat(),
+                        'timeZone': 'America/Sao_Paulo',
+                    },
+                    'attendees': [{'email':'6ano2historia@gmail.com'},{'email':'filipebf951@gmail.com'}]        
+                }
+
+    print(event)
+
+    creds = None
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    servico = build('calendar', 'v3', credentials=creds)
+    event = servico.events().insert(calendarId='primary', body=event).execute()
+
 
 def atualizar_informacoes(arq_qtd_respostas_processadas, planilha):
     # Guarda a quantidade de linhas preenchidas atualmente na planiha
@@ -92,7 +130,7 @@ def atualizar_informacoes(arq_qtd_respostas_processadas, planilha):
         print(dados_novo_contrato)
         print("\n\n")
         criar_eventos(dados_novo_contrato)
-
+        time.sleep(30)
         qtd_respostas_processadas += 1
 
         # atualiza arquivo txt com a quantidade de respostas processadas
@@ -102,12 +140,21 @@ def atualizar_informacoes(arq_qtd_respostas_processadas, planilha):
     print("As informações estão atualizadas.\n\n")
     return 
 
-
-def main():
-
+def verificaGsheetsGforms():
     planilha = autenticar_e_guardar_planilha()
+    # A função que cria o novo evento cadastrado é chamada na função a seguir
     atualizar_informacoes(ARQ, planilha)
 
+# Criar o trigger para avaliar a planilha com respostas do forms
+schedule.every(1).minutes.do(verificaGsheetsGforms)
+
+# Função para lidar com o envio de mensagens de eventos cadastrados na planilha via formulário
+def GsheetsGforms_thread():
+    while True:
+        print ("Antes gforms")
+        verificaGsheetsGforms()
+        print ("Depois gforms")
 
 if __name__ == "__main__":
-  main()
+    GsheetsGforms_thread = threading.Thread(target=GsheetsGforms_thread)
+    GsheetsGforms_thread.start()
